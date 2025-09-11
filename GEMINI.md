@@ -8,5 +8,6 @@
 5. Download pre-trained weights and place them under the project root. Their URLs are available on README.md.
 
 ## How to train custom data
+Custom data training requires NVidia GPU.
 Before training, you must have started development. You can help the procedure.
 Refer docs/train_custom_data.md for further details.
