@@ -14,10 +14,16 @@ Before training, you must have started development. You can help the procedure.
 Refer docs/train_custom_data.md for further details.
 An example training which uses coco128 is available on train_coco128.ipynb.
 
-# How to convert a model for CoreML　(.mlpackage)
+# How to convert a model (.pth) for ONNX Runtime (.onnx)
 
 Do not use onnxsim or onnx-simplifier.
+Note that *.onnx and *.pth are git-ignored.
 
 1. Ask the user to input the number of class and the model name.
 2. Convert the .pth model into .onnx according to demo/ONNXRuntime/README.md.
-3. Use coremltools to convert .onnx model into .mlpackage.
+   Run export_onnx.py using `.venv/bin/python3 export_onnx.py`.
+   The --no-onnxsim option was removed and do not specify this.
+
+# How to convert a model (,pth) for CoreML (.mlpackage)
+
+Use coremltools.
