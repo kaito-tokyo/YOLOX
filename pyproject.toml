@@ -31,9 +31,9 @@ dependencies = [
     "tabulate",
     "psutil",
     "tensorboard",
-    "pycocotools==2.0.2",
+    "pycocotools",
     "onnx",
-    "onnx-simplifier",
+    "onnxsim",
 ]
 
 [project.urls]
