@@ -49,8 +49,15 @@ def get_ext_modules():
     if sys.platform != "win32":  # pre-compile ops on linux
         assert TORCH_AVAILABLE, "torch is required for pre-compiling ops, please install it first."
         # if any other op is added, please also add it here
-        from yolox.layers import FastCOCOEvalOp
-        ext_module.append(FastCOCOEvalOp().build_op())
+        import importlib.util
+        import os
+        spec = importlib.util.spec_from_file_location(
+            "yolox.layers.jit_ops",
+            os.path.join("yolox", "layers", "jit_ops.py"),
+        )
+        jit_ops = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(jit_ops)
+        ext_module.append(jit_ops.FastCOCOEvalOp().build_op())
     return ext_module
 
 
