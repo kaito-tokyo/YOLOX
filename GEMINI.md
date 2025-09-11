@@ -16,6 +16,7 @@ An example training which uses coco128 is available on train_coco128.ipynb.
 
 # How to convert a model for CoreML
 
-1. Convert the .pth model into .onnx according to demo/ONNXRuntime/README.md.
+1. Ask the user to input the number of class and the model name.
+2. Convert the .pth model into .onnx according to demo/ONNXRuntime/README.md.
 2. Use onnxsim command to simplify the ONNX model.
 3. Use coremltools to convert .onnx model into .mlpackage.
