@@ -1,5 +1,22 @@
 [project]
+version = "0.3.0"
 requires-python = "==3.9"
+dependencies = [
+    "numpy",
+    "torch",
+    "opencv-python",
+    "loguru",
+    "tqdm",
+    "torchvision",
+    "thop",
+    "ninja",
+    "tabulate",
+    "psutil",
+    "tensorboard",
+    "pycocotools==2.0.2",
+    "onnx",
+    "onnx-simplifier",
+]
 
 [build-system]
 requires = [
