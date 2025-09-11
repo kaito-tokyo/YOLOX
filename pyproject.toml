@@ -1,6 +1,24 @@
+[build-system]
+requires = [
+    "setuptools>=40.8.0",
+    "wheel",
+    "torch",
+    "ninja",
+]
+build-backend = "setuptools.build_meta"
+
 [project]
-version = "0.3.0"
-requires-python = "==3.9"
+name = "yolox"
+dynamic = ["version"]
+authors = [ { name = "megvii basedet team" } ]
+readme = "README.md"
+requires-python = ">=3.6"
+license = { text = "Apache Software License" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: Apache Software License",
+]
 dependencies = [
     "numpy",
     "torch",
@@ -18,12 +36,14 @@ dependencies = [
     "onnx-simplifier",
 ]
 
-[build-system]
-requires = [
-    "setuptools>=40.8.0",
-    "wheel",
-    "torch==2.8.0",
-    "ninja",
-    "pycocotools"
-]
-build-backend = "setuptools.build_meta"
+[project.urls]
+"Homepage" = "https://github.com/Megvii-BaseDetection/YOLOX"
+"Documentation" = "https://yolox.readthedocs.io"
+"Source" = "https://github.com/Megvii-BaseDetection/YOLOX"
+"Tracker" = "https://github.com/Megvii-BaseDetection/YOLOX/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "yolox.__version__" }
