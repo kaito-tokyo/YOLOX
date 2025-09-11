@@ -11,3 +11,4 @@
 Custom data training requires NVidia GPU.
 Before training, you must have started development. You can help the procedure.
 Refer docs/train_custom_data.md for further details.
+An example training which uses coco128 is available on train_coco128.ipynb.
