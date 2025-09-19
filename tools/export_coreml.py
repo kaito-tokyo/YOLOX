@@ -74,6 +74,7 @@ def main():
     image_input = ct.ImageType(
         shape=dummy_input.shape,
         scale=1/255.0,
+        color_layout=ct.colorlayout.BGR
     )
 
     mlmodel = ct.convert(
