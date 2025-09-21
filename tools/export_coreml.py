@@ -120,7 +120,7 @@ def main():
         input_specs=[mb.TensorSpec(shape=(1, box_size, 5 + num_classes))],
         opset_version=ct.target.macOS14,
     )
-    def postprocess_program(prediction,nms_thre):
+    def postprocess_program(prediction):
         coordinates_all, obj_conf_all, class_confs_all = mb.split(
             x=prediction,
             num_splits=3,
@@ -140,15 +140,22 @@ def main():
             max_boxes=max_boxes,
             per_class_suppression=not args.class_agnostic,
         )
-        
-        final_coordinates = mb.transpose(
-            x=final_coordinates_ios17, perm=[0, 2, 1], name="coordinates"
+
+        final_coordinates_transposed = mb.transpose(
+            x=final_coordinates_ios17, perm=[0, 2, 1]
         )
-        final_scores = mb.transpose(
-            x=final_scores_ios17, perm=[0, 2, 1], name="confidence"
+        final_scores_transposed = mb.transpose(
+            x=final_scores_ios17, perm=[0, 2, 1]
+        )
+
+        final_coordinates = mb.squeeze(
+            x=final_coordinates_transposed, axes=[0], name="coordinates"
+        )
+        final_scores = mb.squeeze(
+            x=final_scores_transposed, axes=[0], name="confidence"
         )
         
-        return final_coordinates, final_scores
+        return final_scores, final_coordinates
 
     mlmodel_spec = mlmodel.get_spec()
 
@@ -164,7 +171,7 @@ def main():
 
     pipeline_spec.description.input.extend(mlmodel_spec.description.input)
     pipeline_spec.description.output.extend(postprocess_spec.description.output)
-    
+
     pipeline = pipeline_spec.pipeline
     pipeline.models.add().CopyFrom(mlmodel_spec)
     pipeline.models.add().CopyFrom(postprocess_spec)
