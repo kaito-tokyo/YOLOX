@@ -35,6 +35,31 @@ def make_parser():
     parser.add_argument("-n", "--name", type=str, default=None, help="model name")
     parser.add_argument("-c", "--ckpt", default=None, type=str, help="ckpt path")
     parser.add_argument("--num_classes", type=int, default=80, help="number of classes")
+
+    parser.add_argument(
+        "--nms_thre", 
+        type=float, 
+        default=0.3, 
+        help="NMS IoU threshold"
+    )
+    parser.add_argument(
+        "--conf_thre", 
+        type=float, 
+        default=0.3, 
+        help="Confidence threshold for filtering"
+    )
+    parser.add_argument(
+        "--max_boxes", 
+        type=int, 
+        default=100, 
+        help="Maximum number of boxes to output after NMS"
+    )
+    parser.add_argument(
+        "--class_agnostic",
+        action="store_true",
+        help="Enable class-agnostic NMS"
+    )
+
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
@@ -94,8 +119,6 @@ def main():
     NMS_THRESHOLD = 0.3
     CONF_THRESHOLD = 0.3
 
-    box_size = exp.test_size[0] * exp.test_size[1] // 64 + exp.test_size[0] * exp.test_size[1] // 256 + exp.test_size[0] * exp.test_size[1] // 1024
-
     @mb.program(input_specs=[mb.TensorSpec(shape=(1, box_size, 5 + args.num_classes))])
     def postprocess_program(prediction):
         coordinates_all = mb.slice_by_index(
@@ -113,10 +136,10 @@ def main():
         final_coordinates, final_scores, _, _ = mb.non_maximum_suppression(
             boxes=coordinates_all,
             scores=scores_all,
-            iou_threshold=NMS_THRESHOLD,
-            score_threshold=CONF_THRESHOLD,
-            max_boxes=10,
-            per_class_suppression=False,
+            iou_threshold=args.nms_thre,
+            score_threshold=args.conf_thre,
+            max_boxes=args.max_boxes,
+            per_class_suppression=not args.class_agnostic,
             name="nms",
         )
         return final_coordinates, final_scores
