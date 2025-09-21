@@ -11,6 +11,9 @@ from torch import nn
 import torchvision
 
 import coremltools as ct
+from coremltools.converters.mil.mil import Builder as mb
+import coremltools.proto.Model_pb2 as ml_spec
+from coremltools.models.utils import rename_feature
 
 from yolox.exp import get_exp
 from yolox.models.network_blocks import SiLU
@@ -40,56 +43,6 @@ def make_parser():
     )
     return parser
 
-class YOLOX_with_postprocess(nn.Module):
-    def __init__(self, model, conf_thre=0.25, nms_thre=0.45, class_agnostic=False):
-        super().__init__()
-        self.model = model
-
-        self.conf_thre = conf_thre
-        self.nms_thre = nms_thre
-
-        self.class_agnostic = class_agnostic
-
-    def forward(self, x):
-        prediction = self.model(x).squeeze()
-        box_corner = prediction.new(prediction.shape)
-        box_corner[:, 0] = prediction[:, 0] - prediction[:, 2] / 2
-        box_corner[:, 1] = prediction[:, 1] - prediction[:, 3] / 2
-        box_corner[:, 2] = prediction[:, 0] + prediction[:, 2] / 2
-        box_corner[:, 3] = prediction[:, 1] + prediction[:, 3] / 2
-        prediction[:, :4] = box_corner[:, :4]
-
-        class_conf, class_pred = torch.max(prediction[:, 5:], 1)
-
-        conf_mask = prediction[:, 4] * class_conf >= self.conf_thre
-
-        (rows,) = conf_mask.nonzero(as_tuple=True)
-
-        confident_candidates = prediction[rows]
-        confident_class_conf = class_conf[rows]
-        confident_class_pred = class_pred[rows]
-        confident_conf = confident_candidates[:, 4] * confident_class_conf
-
-        if self.class_agnostic:
-            nms_out_index = torchvision.ops.nms(
-                confident_candidates[:, :4],
-                confident_conf,
-                self.nms_thre,
-            )
-        else:
-            nms_out_index = torchvision.ops.batched_nms(
-                confident_candidates[:, :4],
-                confident_conf,
-                confident_class_pred,
-                self.nms_thre,
-            )
-
-        final_detections = confident_candidates[nms_out_index]
-        final_class_pred = confident_class_pred[nms_out_index]
-        final_conf = confident_conf[nms_out_index]
-
-        return final_detections[:, :4], final_conf, final_class_pred
-
 
 @logger.catch
 def main():
@@ -116,16 +69,10 @@ def main():
     model = replace_module(model, nn.SiLU, SiLU)
     model.head.decode_in_inference = True
 
-    wrapped_model = YOLOX_with_postprocess(
-        model,
-        class_agnostic=True,
-    )
-    wrapped_model.eval()
-
     logger.info("loading checkpoint done.")
     dummy_input = torch.randn(1, 3, exp.test_size[0], exp.test_size[1])
 
-    traced_model = torch.jit.trace(wrapped_model, dummy_input)
+    traced_model = torch.jit.trace(model, dummy_input)
     
     image_input = ct.ImageType(
         name="image",
@@ -137,15 +84,65 @@ def main():
         traced_model,
         inputs=[image_input],
         outputs=[
-            ct.TensorType(name="coordinates"),
-            ct.TensorType(name="confidence"),
-            ct.TensorType(name="labels"),
+            ct.TensorType(name="prediction"),
         ],
         convert_to="mlprogram",
         compute_units=ct.ComputeUnit.ALL,
     )
+
+    NUM_CLASSES = args.num_classes
+    NMS_THRESHOLD = 0.3
+    CONF_THRESHOLD = 0.3
+
+    box_size = exp.test_size[0] * exp.test_size[1] // 64 + exp.test_size[0] * exp.test_size[1] // 256 + exp.test_size[0] * exp.test_size[1] // 1024
+
+    @mb.program(input_specs=[mb.TensorSpec(shape=(1, box_size, 5 + args.num_classes))])
+    def postprocess_program(prediction):
+        coordinates_all = mb.slice_by_index(
+            x=prediction, begin=[0, 0, 0], end=[1, box_size, 4]
+        )
+        obj_conf_all = mb.slice_by_index(
+            x=prediction, begin=[0, 0, 4], end=[1, box_size, 5]
+        )
+        class_confs_all = mb.slice_by_index(
+            x=prediction, begin=[0, 0, 5], end=[1, box_size, 5 + args.num_classes]
+        )
+
+        scores_all = mb.mul(x=obj_conf_all, y=class_confs_all)
+
+        final_coordinates, final_scores, _, _ = mb.non_maximum_suppression(
+            boxes=coordinates_all,
+            scores=scores_all,
+            iou_threshold=NMS_THRESHOLD,
+            score_threshold=CONF_THRESHOLD,
+            max_boxes=10,
+            per_class_suppression=False,
+            name="nms",
+        )
+        return final_coordinates, final_scores
+
+    mlmodel_spec = mlmodel.get_spec()
+
+    postprocess_model = ct.convert(
+        postprocess_program,
+        convert_to="mlprogram"
+    )
+    postprocess_spec = postprocess_model.get_spec()
+    rename_feature(postprocess_spec, "nms_0", "coordinates")
+    rename_feature(postprocess_spec, "nms_1", "confidence")
+
+    pipeline_spec = ml_spec.Model()
+    pipeline_spec.specificationVersion = ct.SPECIFICATION_VERSION
+
+    pipeline_spec.description.input.extend(mlmodel_spec.description.input)
+    pipeline_spec.description.output.extend(postprocess_spec.description.output)
     
-    mlmodel.save(args.output_name)
+    pipeline = pipeline_spec.pipeline
+    pipeline.models.add().CopyFrom(mlmodel_spec)
+    pipeline.models.add().CopyFrom(postprocess_spec)
+
+    final_pipeline_model = ct.models.MLModel(pipeline_spec, weights_dir=mlmodel.weights_dir)
+    final_pipeline_model.save(args.output_name)
 
     logger.info("generated CoreML model named {}".format(args.output_name))
 
