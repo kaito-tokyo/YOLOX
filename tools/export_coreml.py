@@ -154,7 +154,7 @@ def main():
         final_scores = mb.squeeze(
             x=final_scores_transposed, axes=[0], name="confidence"
         )
-        
+
         return final_scores, final_coordinates
 
     mlmodel_spec = mlmodel.get_spec()
