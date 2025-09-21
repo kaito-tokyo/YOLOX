@@ -115,11 +115,18 @@ def main():
         compute_units=ct.ComputeUnit.ALL,
     )
 
-    NUM_CLASSES = args.num_classes
-    NMS_THRESHOLD = 0.3
-    CONF_THRESHOLD = 0.3
+    num_pixels = exp.test_size[0] * exp.test_size[1]
+    box_size = num_pixels // 64 + num_pixels // 256 + num_pixels // 1024
+    num_classes = args.num_classes
+    nms_thre = args.nms_thre
+    conf_thre = args.conf_thre
+    max_boxes = args.max_boxes
+    class_agnostic = args.class_agnostic
 
-    @mb.program(input_specs=[mb.TensorSpec(shape=(1, box_size, 5 + args.num_classes))])
+
+    @mb.program(
+        input_specs=[mb.TensorSpec(shape=(1, box_size, 5 + num_classes))],
+    )
     def postprocess_program(prediction):
         coordinates_all = mb.slice_by_index(
             x=prediction, begin=[0, 0, 0], end=[1, box_size, 4]
@@ -136,9 +143,9 @@ def main():
         final_coordinates, final_scores, _, _ = mb.non_maximum_suppression(
             boxes=coordinates_all,
             scores=scores_all,
-            iou_threshold=args.nms_thre,
-            score_threshold=args.conf_thre,
-            max_boxes=args.max_boxes,
+            iou_threshold=nms_thre,
+            score_threshold=conf_thre,
+            max_boxes=max_boxes,
             per_class_suppression=not args.class_agnostic,
             name="nms",
         )
@@ -148,7 +155,7 @@ def main():
 
     postprocess_model = ct.convert(
         postprocess_program,
-        convert_to="mlprogram"
+        convert_to="mlprogram",
     )
     postprocess_spec = postprocess_model.get_spec()
     rename_feature(postprocess_spec, "nms_0", "coordinates")
