@@ -43,12 +43,6 @@ def make_parser():
         help="NMS IoU threshold"
     )
     parser.add_argument(
-        "--conf_thre", 
-        type=float, 
-        default=0.3, 
-        help="Confidence threshold for filtering"
-    )
-    parser.add_argument(
         "--max_boxes", 
         type=int, 
         default=100, 
@@ -119,36 +113,41 @@ def main():
     box_size = num_pixels // 64 + num_pixels // 256 + num_pixels // 1024
     num_classes = args.num_classes
     nms_thre = args.nms_thre
-    conf_thre = args.conf_thre
     max_boxes = args.max_boxes
     class_agnostic = args.class_agnostic
 
-
     @mb.program(
         input_specs=[mb.TensorSpec(shape=(1, box_size, 5 + num_classes))],
+        opset_version=ct.target.macOS14,
     )
-    def postprocess_program(prediction):
-        coordinates_all = mb.slice_by_index(
-            x=prediction, begin=[0, 0, 0], end=[1, box_size, 4]
+    def postprocess_program(prediction,nms_thre):
+        coordinates_all, obj_conf_all, class_confs_all = mb.split(
+            x=prediction,
+            num_splits=3,
+            axis=-1,
+            split_sizes=[4, 1, num_classes]
         )
-        obj_conf_all = mb.slice_by_index(
-            x=prediction, begin=[0, 0, 4], end=[1, box_size, 5]
-        )
-        class_confs_all = mb.slice_by_index(
-            x=prediction, begin=[0, 0, 5], end=[1, box_size, 5 + args.num_classes]
-        )
-
+        
         scores_all = mb.mul(x=obj_conf_all, y=class_confs_all)
+        
+        transposed_boxes = mb.transpose(x=coordinates_all, perm=[0, 2, 1])
+        transposed_scores = mb.transpose(x=scores_all, perm=[0, 2, 1])
 
-        final_coordinates, final_scores, _, _ = mb.non_maximum_suppression(
-            boxes=coordinates_all,
-            scores=scores_all,
+        final_coordinates_ios17, final_scores_ios17, _ = mb.non_maximum_suppression(
+            boxes=transposed_boxes,
+            scores=transposed_scores,
             iou_threshold=nms_thre,
-            score_threshold=conf_thre,
             max_boxes=max_boxes,
             per_class_suppression=not args.class_agnostic,
-            name="nms",
         )
+        
+        final_coordinates = mb.transpose(
+            x=final_coordinates_ios17, perm=[0, 2, 1], name="coordinates"
+        )
+        final_scores = mb.transpose(
+            x=final_scores_ios17, perm=[0, 2, 1], name="confidence"
+        )
+        
         return final_coordinates, final_scores
 
     mlmodel_spec = mlmodel.get_spec()
@@ -156,10 +155,9 @@ def main():
     postprocess_model = ct.convert(
         postprocess_program,
         convert_to="mlprogram",
+        minimum_deployment_target=ct.target.macOS14,
     )
     postprocess_spec = postprocess_model.get_spec()
-    rename_feature(postprocess_spec, "nms_0", "coordinates")
-    rename_feature(postprocess_spec, "nms_1", "confidence")
 
     pipeline_spec = ml_spec.Model()
     pipeline_spec.specificationVersion = ct.SPECIFICATION_VERSION
